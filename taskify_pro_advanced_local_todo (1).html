@@ -1,0 +1,1180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taskify - Modern Todo & Calendar</title>
+    
+    <!-- Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Icons: Phosphor -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: {
+                            50: '#e5f1ff',
+                            100: '#cce4ff',
+                            500: '#007aff',
+                            600: '#0066d6',
+                            700: '#004a99',
+                        }
+                    },
+                    animation: {
+                        'slide-down': 'slideDown 0.3s ease-out forwards',
+                        'fade-out': 'fadeOut 0.2s ease-in forwards',
+                        'bounce-slight': 'bounceSlight 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
+                        'fade-in': 'fadeIn 0.2s ease-out forwards',
+                    },
+                    keyframes: {
+                        slideDown: {
+                            '0%': { opacity: '0', transform: 'translateY(-10px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        },
+                        fadeOut: {
+                            '0%': { opacity: '1', transform: 'translateX(0)' },
+                            '100%': { opacity: '0', transform: 'translateX(10px)' },
+                        },
+                        bounceSlight: {
+                            '0%': { transform: 'scale(1)' },
+                            '50%': { transform: 'scale(0.98)' },
+                            '100%': { transform: 'scale(1)' },
+                        },
+                        fadeIn: {
+                            '0%': { opacity: '0', transform: 'scale(0.95)' },
+                            '100%': { opacity: '1', transform: 'scale(1)' },
+                        }
+                    }
+                }
+            }
+        };
+    </script>
+    
+    <style>
+        /* Custom Scrollbar - macOS style */
+        ::-webkit-scrollbar { width: 14px; height: 14px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border: 4px solid transparent; background-clip: padding-box; border-radius: 9999px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.3); border: 4px solid transparent; background-clip: padding-box; }
+        
+        /* Checkbox styling */
+        .task-checkbox:checked + div { background-color: #007aff; border-color: #007aff; }
+        .task-checkbox:checked + div svg { opacity: 1; }
+
+        /* View Toggle Active State */
+        .view-btn.active { background-color: #fff; color: #007aff; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+        /* Hide date input icon in webkit */
+        input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webkit-calendar-picker-indicator { cursor: pointer; opacity: 0.6; transition: 0.2s; }
+        input[type="date"]::-webkit-calendar-picker-indicator:hover, input[type="time"]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+
+        /* Subtask styles */
+        .subtask-checkbox:checked + div { background-color: #64748b; border-color: #64748b; }
+        .subtask-checkbox:checked + div svg { opacity: 1; }
+        
+        /* Prose styling for links */
+        .prose a { color: #007aff; text-decoration: underline; cursor: pointer; pointer-events: auto; }
+
+        /* Drag and Drop visual feedback */
+        .dragging { opacity: 0.5; border: 2px dashed #007aff; transform: scale(0.98); }
+        .drag-over { border-top: 2px solid #007aff; }
+    </style>
+</head>
+<body class="bg-[#f5f5f7] text-slate-800 font-sans antialiased min-h-screen flex flex-col items-center justify-center p-2 sm:p-4 selection:bg-primary-100 selection:text-primary-700">
+
+    <main class="w-full max-w-5xl mx-auto flex flex-col h-[95vh] sm:h-[88vh] bg-white rounded-2xl shadow-xl shadow-slate-200/50 overflow-hidden ring-1 ring-slate-200">
+        
+        <!-- Header -->
+        <header class="px-6 py-4 border-b border-slate-100 bg-white/80 backdrop-blur-md flex flex-col sm:flex-row sm:items-center justify-between gap-4 z-10 shrink-0">
+            <div class="flex items-center justify-between w-full sm:w-auto">
+                <div>
+                    <h1 class="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+                        <i class="ph-fill ph-check-circle text-primary-600 text-3xl"></i>
+                        Taskify
+                    </h1>
+                    <p class="text-sm text-slate-500 font-medium mt-0.5 flex items-center gap-2">
+                        <span id="date-display">Today</span>
+                        <span class="px-1.5 py-0.5 bg-slate-100 text-slate-400 rounded text-[10px] uppercase font-bold tracking-wider cursor-help" title="Press Cmd+K or Ctrl+K">Cmd+K</span>
+                    </p>
+                </div>
+                <div class="text-right sm:hidden">
+                    <p class="text-xl font-bold text-primary-600" id="task-completion-percentage-mobile">0%</p>
+                </div>
+            </div>
+
+            <!-- View Toggles -->
+            <div class="flex p-1 bg-slate-100 rounded-lg self-center sm:self-auto w-full sm:w-auto justify-center">
+                <button id="btn-list-view" class="view-btn active flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all text-slate-500 hover:text-slate-700 flex-1 sm:flex-none justify-center">
+                    <i class="ph ph-list-dashes text-lg"></i> List
+                </button>
+                <button id="btn-calendar-view" class="view-btn flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all text-slate-500 hover:text-slate-700 flex-1 sm:flex-none justify-center">
+                    <i class="ph ph-calendar-blank text-lg"></i> Calendar
+                </button>
+                <button id="btn-settings-view" class="view-btn flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all text-slate-500 hover:text-slate-700 flex-1 sm:flex-none justify-center">
+                    <i class="ph ph-gear text-lg"></i> Settings
+                </button>
+            </div>
+
+            <div class="text-right hidden sm:block">
+                <p class="text-2xl font-bold text-primary-600" id="task-completion-percentage">0%</p>
+                <p class="text-xs text-slate-400 font-medium uppercase tracking-wider">Completed</p>
+            </div>
+        </header>
+
+        <!-- Input Section -->
+        <div id="input-container" class="px-6 py-4 bg-slate-50/50 border-b border-slate-100 shrink-0">
+            <form id="todo-form" class="flex flex-col lg:flex-row gap-3">
+                <div class="relative flex-1 group">
+                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-primary-500 transition-colors">
+                        <i class="ph ph-plus text-xl"></i>
+                    </div>
+                    <input 
+                        type="text" id="todo-input" required autocomplete="off"
+                        class="block w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-700 placeholder-slate-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:outline-none transition-shadow text-base shadow-sm" 
+                        placeholder="What needs to be done? (Use #tags)"
+                    >
+                </div>
+                <div class="flex flex-wrap sm:flex-nowrap gap-2">
+                    <select id="todo-category" class="px-3 py-3 bg-white border border-slate-200 rounded-xl text-slate-600 text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none shadow-sm cursor-pointer w-full sm:w-auto">
+                        <option value="none">No Category</option>
+                        <option value="work">💼 Work</option>
+                        <option value="personal">🏠 Personal</option>
+                    </select>
+                    <div class="relative flex w-full sm:w-auto">
+                        <input type="date" id="todo-date" title="Due Date"
+                            class="block w-full sm:w-auto px-2 py-3 bg-white border border-slate-200 rounded-l-xl text-slate-600 focus:ring-2 focus:ring-primary-500 focus:outline-none transition-shadow text-sm shadow-sm"
+                        >
+                        <input type="time" id="todo-time" title="Due Time"
+                            class="block w-full sm:w-auto px-2 py-3 bg-white border border-l-0 border-slate-200 rounded-r-xl text-slate-600 focus:ring-2 focus:ring-primary-500 focus:outline-none transition-shadow text-sm shadow-sm"
+                        >
+                    </div>
+                    <button type="submit" class="w-full sm:w-auto px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-xl transition-colors focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 shadow-sm flex items-center justify-center gap-2 shrink-0">
+                        <span>Add</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <div class="flex-1 overflow-hidden relative bg-white">
+            
+            <!-- List View Container -->
+            <div id="list-view-container" class="absolute inset-0 flex flex-col transition-opacity duration-300">
+                <div id="date-filter-indicator" class="hidden px-6 py-3 bg-primary-50 border-b border-primary-100 flex items-center justify-between shrink-0 animate-slide-down">
+                    <span id="date-filter-text" class="text-sm text-primary-700">Viewing tasks for: <strong>...</strong></span>
+                    <button id="clear-date-filter" class="text-primary-500 hover:text-primary-700 transition-colors p-1 rounded-md hover:bg-primary-100" title="Clear Date Filter">
+                        <i class="ph ph-x-circle text-lg"></i>
+                    </button>
+                </div>
+
+                <div class="flex-1 overflow-y-auto p-4 sm:p-6 w-full" id="list-container">
+                    <div id="empty-state" class="hidden w-full flex-col items-center justify-center h-full text-center py-10 opacity-0 transition-opacity duration-300 mx-auto">
+                        <div class="w-20 h-20 bg-primary-50 rounded-full flex items-center justify-center mb-4 mx-auto">
+                            <i class="ph-duotone ph-coffee text-4xl text-primary-500"></i>
+                        </div>
+                        <h3 class="text-lg font-semibold text-slate-800 w-full">All caught up!</h3>
+                        <p class="text-slate-500 mt-1 max-w-[250px] mx-auto text-sm">You have no tasks here. Enjoy your day or add a new task above.</p>
+                    </div>
+
+                    <ul id="todo-list" class="space-y-2 w-full max-w-4xl mx-auto pb-20"></ul>
+                </div>
+
+                <footer class="px-6 py-4 border-t border-slate-100 bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0">
+                    <span class="text-sm text-slate-500 font-medium" id="items-left-text">0 items left</span>
+                    
+                    <div class="flex space-x-1 p-1 bg-slate-200/50 rounded-lg overflow-x-auto max-w-full" id="filters">
+                        <button data-filter="all" class="filter-btn active-filter px-4 py-1.5 text-sm font-medium rounded-md transition-all bg-white text-slate-800 shadow-sm shrink-0">All</button>
+                        <button data-filter="active" class="filter-btn px-4 py-1.5 text-sm font-medium rounded-md transition-all text-slate-500 hover:text-slate-700 hover:bg-slate-200/50 shrink-0">Active</button>
+                        <button data-filter="completed" class="filter-btn px-4 py-1.5 text-sm font-medium rounded-md transition-all text-slate-500 hover:text-slate-700 hover:bg-slate-200/50 shrink-0">Completed</button>
+                    </div>
+
+                    <button id="clear-completed" class="text-sm font-medium text-slate-500 hover:text-rose-600 transition-colors hidden sm:block">
+                        Clear completed
+                    </button>
+                </footer>
+            </div>
+
+            <!-- Calendar View Container -->
+            <div id="calendar-view-container" class="absolute inset-0 flex flex-col transition-opacity duration-300 opacity-0 pointer-events-none hidden">
+                <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
+                    <h2 id="calendar-month-year" class="text-lg font-bold text-slate-800">Month Year</h2>
+                    <div class="flex gap-2">
+                        <button id="btn-prev-month" class="p-2 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors"><i class="ph ph-caret-left text-lg"></i></button>
+                        <button id="btn-today-month" class="px-3 py-1 text-sm font-medium rounded-lg hover:bg-slate-100 text-slate-600 transition-colors">Today</button>
+                        <button id="btn-next-month" class="p-2 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors"><i class="ph ph-caret-right text-lg"></i></button>
+                    </div>
+                </div>
+
+                <div class="flex-1 flex flex-col overflow-hidden bg-slate-50/30">
+                    <div class="grid grid-cols-7 border-b border-slate-200 shrink-0 bg-white">
+                        <div class="py-2 text-center text-[10px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">Sun</div>
+                        <div class="py-2 text-center text-[10px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">Mon</div>
+                        <div class="py-2 text-center text-[10px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">Tue</div>
+                        <div class="py-2 text-center text-[10px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">Wed</div>
+                        <div class="py-2 text-center text-[10px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">Thu</div>
+                        <div class="py-2 text-center text-[10px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">Fri</div>
+                        <div class="py-2 text-center text-[10px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">Sat</div>
+                    </div>
+                    <div id="calendar-grid" class="flex-1 grid grid-cols-7 grid-rows-5 sm:grid-rows-6 auto-rows-fr bg-slate-200 gap-px overflow-y-auto"></div>
+                </div>
+            </div>
+
+            <!-- Settings View Container -->
+            <div id="settings-view-container" class="absolute inset-0 transition-opacity duration-300 opacity-0 pointer-events-none hidden overflow-y-auto p-4 sm:p-8">
+                <div class="max-w-2xl mx-auto space-y-6 pb-20">
+                    <h2 class="text-xl font-bold text-slate-900 mb-4">Settings & Data</h2>
+                    
+                    <!-- Notifications -->
+                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                        <h3 class="font-semibold text-slate-800 mb-4 flex items-center gap-2"><i class="ph ph-bell text-primary-500 text-lg"></i> Notifications</h3>
+                        <div class="flex items-center justify-between mb-4 pb-4 border-b border-slate-100">
+                            <div>
+                                <p class="font-medium text-sm text-slate-700">Browser Notifications</p>
+                                <p class="text-xs text-slate-500 mt-1">Allow Taskify to send push notifications for due tasks.</p>
+                            </div>
+                            <button id="btn-request-notify" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors">Enable</button>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="font-medium text-sm text-slate-700">Default Reminder Time</p>
+                                <p class="text-xs text-slate-500 mt-1">When should we notify you before a task's time?</p>
+                            </div>
+                            <select id="setting-reminder" class="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:outline-none">
+                                <option value="0">At time of event</option>
+                                <option value="5">5 mins before</option>
+                                <option value="15">15 mins before</option>
+                                <option value="30">30 mins before</option>
+                                <option value="-1">Disabled</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Backup & Sync -->
+                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                        <h3 class="font-semibold text-slate-800 mb-4 flex items-center gap-2"><i class="ph ph-database text-primary-500 text-lg"></i> Backup & Sync</h3>
+                        
+                        <div class="flex items-center justify-between mb-4 pb-4 border-b border-slate-100">
+                            <div>
+                                <p class="font-medium text-sm text-slate-700">Backup Data</p>
+                                <p class="text-xs text-slate-500 mt-1">Export your tasks to a JSON file.</p>
+                            </div>
+                            <button id="btn-export-json" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors">Export JSON</button>
+                        </div>
+                        
+                        <div class="flex items-center justify-between mb-4 pb-4 border-b border-slate-100">
+                            <div>
+                                <p class="font-medium text-sm text-slate-700">Restore Data</p>
+                                <p class="text-xs text-slate-500 mt-1">Import tasks from a JSON backup.</p>
+                            </div>
+                            <label class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors cursor-pointer">
+                                Import JSON
+                                <input type="file" id="input-import-json" accept=".json" class="hidden">
+                            </label>
+                        </div>
+
+                        <!-- Calendar Web Sync -->
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4 mb-4">
+                            <div>
+                                <p class="font-medium text-sm text-slate-700">Auto-Sync Calendar (.ics URL)</p>
+                                <p class="text-xs text-slate-500 mt-1 max-w-[280px]">Paste a private iCal URL. Note: Requires CORS proxy.</p>
+                            </div>
+                            <div class="flex gap-2 w-full sm:w-auto">
+                                <input type="url" id="setting-ics-url" placeholder="https://...basic.ics" class="flex-1 sm:w-64 bg-slate-50 border border-slate-200 text-slate-700 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:outline-none text-sm">
+                                <button id="btn-sync-now" class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg transition-colors shrink-0">Sync</button>
+                            </div>
+                        </div>
+
+                        <!-- Manual ICS Upload (Secure Alternative) -->
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="font-medium text-sm text-slate-700">Manual Calendar Upload <span class="ml-1 text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold uppercase">Secure</span></p>
+                                <p class="text-xs text-slate-500 mt-1 max-w-[280px]">Upload an exported .ics file. 100% offline parsing with zero privacy risks.</p>
+                            </div>
+                            <label class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors cursor-pointer shrink-0">
+                                Upload .ics
+                                <input type="file" id="input-import-ics-file" accept=".ics" class="hidden">
+                            </label>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Command Palette Modal -->
+    <div id="cmd-palette-modal" class="fixed inset-0 z-50 hidden bg-slate-900/40 backdrop-blur-sm items-start justify-center pt-[10vh] px-4 opacity-0 transition-opacity duration-200">
+        <div class="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col transform scale-95 transition-transform duration-200" id="cmd-palette-box">
+            <div class="relative flex items-center border-b border-slate-100 px-4 py-3">
+                <i class="ph ph-magnifying-glass text-xl text-slate-400 mr-3"></i>
+                <input type="text" id="cmd-input" class="w-full text-lg text-slate-700 placeholder-slate-400 focus:outline-none bg-transparent" placeholder="Search tasks or type to create new...">
+                <button id="cmd-close" class="p-1 rounded hover:bg-slate-100 text-slate-400"><i class="ph ph-x text-lg"></i></button>
+            </div>
+            <ul id="cmd-results" class="max-h-[60vh] overflow-y-auto py-2">
+                <!-- Results injected here -->
+            </ul>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <script>
+        // --- State Management ---
+        const STORE_KEY = 'taskify-todos-v6-pro';
+        const SETTINGS_KEY = 'taskify-settings-v6-pro';
+        
+        let todos = JSON.parse(localStorage.getItem(STORE_KEY)) || [];
+        // Migration to ensure nested arrays/objects exist
+        todos = todos.map(t => ({
+            ...t, 
+            subtasks: t.subtasks || [], 
+            category: t.category || 'none', 
+            notes: t.notes || '', 
+            attachments: t.attachments || [],
+            order: t.order || 0
+        }));
+        
+        let settings = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {
+            reminderOffset: 5,
+            icsUrl: ''
+        };
+
+        let currentFilter = 'all';
+        let currentView = 'list';
+        let selectedDateFilter = null;
+        let expandedTasks = new Set();
+        let notificationInterval;
+        
+        // Drag & Drop State
+        let draggedTodoId = null;
+
+        // Calendar State
+        let currentDate = new Date();
+        let displayMonth = currentDate.getMonth();
+        let displayYear = currentDate.getFullYear();
+
+        // --- DOM Elements ---
+        const DOM = {
+            form: document.getElementById('todo-form'),
+            input: document.getElementById('todo-input'),
+            dateInput: document.getElementById('todo-date'),
+            timeInput: document.getElementById('todo-time'),
+            categoryInput: document.getElementById('todo-category'),
+            inputContainer: document.getElementById('input-container'),
+            
+            listView: document.getElementById('list-view-container'),
+            list: document.getElementById('todo-list'),
+            itemsLeft: document.getElementById('items-left-text'),
+            clearCompletedBtn: document.getElementById('clear-completed'),
+            filterBtns: document.querySelectorAll('.filter-btn'),
+            emptyState: document.getElementById('empty-state'),
+            dateFilterIndicator: document.getElementById('date-filter-indicator'),
+            dateFilterText: document.getElementById('date-filter-text'),
+            clearDateFilterBtn: document.getElementById('clear-date-filter'),
+            
+            calendarView: document.getElementById('calendar-view-container'),
+            calendarGrid: document.getElementById('calendar-grid'),
+            calendarMonthYear: document.getElementById('calendar-month-year'),
+            
+            settingsView: document.getElementById('settings-view-container'),
+            
+            dateDisplay: document.getElementById('date-display'),
+            completionText: document.getElementById('task-completion-percentage'),
+            completionMobile: document.getElementById('task-completion-percentage-mobile'),
+            
+            btnList: document.getElementById('btn-list-view'),
+            btnCalendar: document.getElementById('btn-calendar-view'),
+            btnSettings: document.getElementById('btn-settings-view'),
+            toastContainer: document.getElementById('toast-container'),
+
+            cmdPalette: document.getElementById('cmd-palette-modal'),
+            cmdBox: document.getElementById('cmd-palette-box'),
+            cmdInput: document.getElementById('cmd-input'),
+            cmdResults: document.getElementById('cmd-results'),
+            cmdClose: document.getElementById('cmd-close')
+        };
+
+        // --- Utility Functions ---
+        function formatDateLocal(date) {
+            if (!date) return '';
+            return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+        }
+        function parseDateLocal(dateString) {
+            if (!dateString) return null;
+            const [y, m, d] = dateString.split('-').map(Number);
+            return new Date(y, m - 1, d);
+        }
+        function isToday(date) {
+            const today = new Date();
+            return date.getDate() === today.getDate() && date.getMonth() === today.getMonth() && date.getFullYear() === today.getFullYear();
+        }
+        const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
+        
+        function linkify(text) {
+            const urlRegex = /(https?:\/\/[^\s]+)/g;
+            return text.replace(urlRegex, function(url) {
+                return `<a href="${url}" target="_blank" contenteditable="false" onclick="window.open('${url}', '_blank'); event.stopPropagation();" class="text-primary-600 hover:underline">${url}</a>`;
+            });
+        }
+
+        function extractTags(text) {
+            const tags = text.match(/#\w+/g) || [];
+            let cleanText = text;
+            tags.forEach(t => cleanText = cleanText.replace(t, '').trim());
+            return { cleanText, tags };
+        }
+
+        function showToast(title, message, type = 'success') {
+            const toast = document.createElement('div');
+            const icon = type === 'success' ? 'ph-check-circle text-emerald-500' : (type==='error'?'ph-warning-circle text-rose-500':'ph-info text-primary-500');
+            toast.className = `bg-white border-l-4 ${type==='success'?'border-emerald-500':(type==='error'?'border-rose-500':'border-primary-500')} rounded shadow-lg p-3 flex items-start gap-3 pointer-events-auto animate-slide-down min-w-[250px] ring-1 ring-slate-100 z-[60]`;
+            toast.innerHTML = `
+                <i class="ph-fill ${icon} text-xl mt-0.5"></i>
+                <div class="flex-1">
+                    <h4 class="text-sm font-bold text-slate-800">${title}</h4>
+                    <p class="text-xs text-slate-500 mt-0.5 max-w-[250px] whitespace-normal break-words">${message}</p>
+                </div>
+            `;
+            DOM.toastContainer.appendChild(toast);
+            setTimeout(() => {
+                toast.classList.add('animate-fade-out');
+                setTimeout(() => toast.remove(), 200);
+            }, 5000);
+        }
+
+        // --- CRUD and Data handling functions ---
+        function saveTodos() { localStorage.setItem(STORE_KEY, JSON.stringify(todos)); updateStats(); }
+        function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
+
+        function handleRollover() {
+            const todayStr = formatDateLocal(new Date());
+            let rolledOver = 0;
+            todos.forEach(t => {
+                if (!t.completed && t.dueDate && t.dueDate < todayStr) {
+                    t.dueDate = todayStr;
+                    rolledOver++;
+                }
+            });
+            if (rolledOver > 0) {
+                saveTodos();
+                showToast('Tasks Rolled Over', `${rolledOver} overdue task(s) moved to today.`, 'info');
+            }
+        }
+
+        function addTodo(text, dueDateStr, dueTimeStr, category = 'none') {
+            let type = 'todo';
+            if (/(zoom\.us|meet\.google\.com|teams\.microsoft|webex)/i.test(text)) type = 'event';
+
+            const maxOrder = todos.length > 0 ? Math.max(...todos.map(t => t.order || 0)) : 0;
+
+            todos.push({
+                id: generateId(), text: text, completed: false, createdAt: Date.now(),
+                dueDate: dueDateStr || null, dueTime: dueTimeStr || null, 
+                subtasks: [], category: category, notes: '', attachments: [], type: type, order: maxOrder + 1
+            });
+            saveTodos(); renderList();
+        }
+
+        function toggleTodo(id) {
+            todos = todos.map(t => t.id === id ? { ...t, completed: !t.completed } : t);
+            saveTodos(); if(currentView === 'list') renderList(); else renderCalendar();
+        }
+
+        function deleteTodo(id) {
+            todos = todos.filter(t => t.id !== id);
+            expandedTasks.delete(id); saveTodos(); renderList();
+        }
+
+        // Subtasks & Notes & Attachments
+        function addSubtask(parentId, text) {
+            if(!text.trim()) return;
+            todos = todos.map(t => t.id === parentId ? { ...t, subtasks: [...t.subtasks, { id: generateId(), text: text.trim(), completed: false }] } : t);
+            expandedTasks.add(parentId); saveTodos(); renderList();
+        }
+        function toggleSubtask(parentId, subId) {
+            todos = todos.map(t => t.id === parentId ? { ...t, subtasks: t.subtasks.map(s => s.id === subId ? { ...s, completed: !s.completed } : s) } : t);
+            saveTodos(); renderList();
+        }
+        function deleteSubtask(parentId, subId) {
+            todos = todos.map(t => t.id === parentId ? { ...t, subtasks: t.subtasks.filter(s => s.id !== subId) } : t);
+            saveTodos(); renderList();
+        }
+        function updateNotes(parentId, notes) {
+            todos = todos.map(t => t.id === parentId ? { ...t, notes: notes } : t);
+            saveTodos();
+        }
+        function addAttachment(parentId, file) {
+            if(file.size > 500 * 1024) { showToast('File too large', 'Max file size is 500KB (Local Storage limit).', 'error'); return; }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                todos = todos.map(t => {
+                    if (t.id === parentId) {
+                        return { ...t, attachments: [...(t.attachments||[]), { name: file.name, type: file.type, data: e.target.result }] };
+                    }
+                    return t;
+                });
+                saveTodos(); renderList();
+            };
+            reader.readAsDataURL(file);
+        }
+        function deleteAttachment(parentId, index) {
+            todos = todos.map(t => {
+                if (t.id === parentId) {
+                    const newAtt = [...t.attachments]; newAtt.splice(index, 1);
+                    return { ...t, attachments: newAtt };
+                }
+                return t;
+            });
+            saveTodos(); renderList();
+        }
+
+        // --- Drag and Drop Logic ---
+        function handleDragStart(e, id) {
+            draggedTodoId = id;
+            e.target.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', id);
+        }
+
+        function handleDragOver(e, targetId) {
+            e.preventDefault(); 
+            e.dataTransfer.dropEffect = 'move';
+            if (targetId && targetId !== draggedTodoId) {
+                const draggedEl = document.querySelector(`li[data-id="${draggedTodoId}"]`);
+                const targetEl = document.querySelector(`li[data-id="${targetId}"]`);
+                if(draggedEl && targetEl) {
+                    const targetRect = targetEl.getBoundingClientRect();
+                    const next = (e.clientY - targetRect.top) / (targetRect.bottom - targetRect.top) > 0.5;
+                    DOM.list.insertBefore(draggedEl, next ? targetEl.nextSibling : targetEl);
+                }
+            }
+        }
+
+        function handleDrop(e, targetId) {
+            e.preventDefault();
+            const draggedEl = document.querySelector('.dragging');
+            if(draggedEl) draggedEl.classList.remove('dragging');
+            
+            if (draggedTodoId && draggedTodoId !== targetId) {
+                const lis = Array.from(DOM.list.querySelectorAll('li[data-id]'));
+                lis.forEach((li, index) => {
+                    const id = li.getAttribute('data-id');
+                    const todoIndex = todos.findIndex(t => t.id === id);
+                    if(todoIndex > -1) todos[todoIndex].order = index;
+                });
+                saveTodos();
+                renderList();
+            }
+            draggedTodoId = null;
+        }
+
+        // --- Rendering the main list and components ---
+        function updateStats() {
+            let base = selectedDateFilter ? todos.filter(t => t.dueDate === selectedDateFilter) : todos;
+            const active = base.filter(t => !t.completed).length;
+            const done = base.filter(t => t.completed).length;
+            
+            DOM.itemsLeft.textContent = `${active} item${active !== 1 ? 's' : ''} left`;
+            const pct = base.length === 0 ? 0 : Math.round((done / base.length) * 100);
+            DOM.completionText.textContent = `${pct}%`; DOM.completionMobile.textContent = `${pct}%`;
+            
+            DOM.clearCompletedBtn.style.display = done > 0 ? (window.innerWidth < 640 ? 'block' : 'inline-block') : 'none';
+        }
+
+        function renderList() {
+            DOM.list.innerHTML = '';
+            let filtered = todos;
+            if (selectedDateFilter) filtered = filtered.filter(t => t.dueDate === selectedDateFilter);
+            if (currentFilter === 'active') filtered = filtered.filter(t => !t.completed);
+            if (currentFilter === 'completed') filtered = filtered.filter(t => t.completed);
+
+            if (selectedDateFilter) {
+                DOM.dateFilterText.innerHTML = `Viewing tasks for: <strong>${parseDateLocal(selectedDateFilter).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</strong>`;
+                DOM.dateFilterIndicator.classList.remove('hidden');
+            } else DOM.dateFilterIndicator.classList.add('hidden');
+
+            if (filtered.length === 0) {
+                DOM.emptyState.classList.remove('hidden'); DOM.emptyState.classList.add('flex');
+                setTimeout(() => DOM.emptyState.classList.remove('opacity-0'), 10);
+            } else {
+                DOM.emptyState.classList.add('opacity-0', 'hidden'); DOM.emptyState.classList.remove('flex');
+            }
+
+            const sorted = [...filtered].sort((a, b) => {
+                if (a.dueDate && b.dueDate) {
+                    if (a.dueDate === b.dueDate) {
+                         if(a.dueTime && b.dueTime && a.dueTime !== b.dueTime) return a.dueTime.localeCompare(b.dueTime);
+                         return (a.order || 0) - (b.order || 0); 
+                    }
+                    return a.dueDate.localeCompare(b.dueDate);
+                }
+                if (a.dueDate) return -1; if (b.dueDate) return 1; 
+                return (a.order || 0) - (b.order || 0);
+            });
+
+            sorted.forEach(todo => {
+                const isExp = expandedTasks.has(todo.id);
+                const subTot = todo.subtasks.length;
+                const subDone = todo.subtasks.filter(s => s.completed).length;
+                const hasNotes = !!todo.notes;
+                const attCount = todo.attachments ? todo.attachments.length : 0;
+
+                const { cleanText, tags } = extractTags(todo.text);
+
+                const li = document.createElement('li');
+                li.className = 'group flex flex-col bg-white border border-slate-200 rounded-xl hover:border-primary-300 transition-colors overflow-hidden';
+                li.setAttribute('data-id', todo.id);
+                
+                li.draggable = true;
+                li.addEventListener('dragstart', (e) => handleDragStart(e, todo.id));
+                li.addEventListener('dragover', (e) => handleDragOver(e, todo.id));
+                li.addEventListener('drop', (e) => handleDrop(e, todo.id));
+                li.addEventListener('dragend', () => { li.classList.remove('dragging'); });
+
+                const mainRow = document.createElement('div');
+                mainRow.className = 'flex items-center justify-between p-3 w-full cursor-grab active:cursor-grabbing';
+                
+                const leftSide = document.createElement('div');
+                leftSide.className = 'flex items-center flex-1 overflow-hidden min-w-0';
+
+                const chev = document.createElement('button');
+                chev.className = `w-7 h-7 mr-1 flex items-center justify-center rounded hover:bg-slate-100 text-slate-400 shrink-0`;
+                chev.innerHTML = `<i class="ph-bold ph-caret-right transition-transform duration-200 ${isExp ? 'rotate-90' : ''}"></i>`;
+                chev.onclick = (e) => { e.stopPropagation(); if(isExp) expandedTasks.delete(todo.id); else expandedTasks.add(todo.id); renderList(); };
+                leftSide.appendChild(chev);
+
+                const chkWrap = document.createElement('label'); chkWrap.className = 'relative flex items-center cursor-pointer shrink-0 mr-3';
+                const chk = document.createElement('input'); chk.type = 'checkbox'; chk.className = 'task-checkbox peer sr-only'; chk.checked = todo.completed;
+                chk.onchange = (e) => { e.stopPropagation(); toggleTodo(todo.id); };
+                const custChk = document.createElement('div'); custChk.className = 'w-6 h-6 rounded-full border-2 border-slate-300 flex items-center justify-center bg-white';
+                custChk.innerHTML = `<i class="ph-bold ph-check text-white text-xs opacity-0 transition-opacity"></i>`;
+                chkWrap.append(chk, custChk); leftSide.appendChild(chkWrap);
+
+                const content = document.createElement('div'); content.className = 'flex-1 min-w-0 flex flex-col justify-center';
+                const txtCont = document.createElement('div'); txtCont.className = 'flex items-center gap-2 flex-wrap';
+                
+                const txtSpan = document.createElement('span');
+                txtSpan.className = `block truncate text-base ${todo.completed ? 'text-slate-400 line-through' : 'text-slate-700 font-medium'}`;
+                txtSpan.innerHTML = linkify(cleanText);
+                txtSpan.contentEditable = !todo.completed; txtSpan.spellcheck = false;
+                
+                txtSpan.onmousedown = (e) => e.stopPropagation(); 
+                txtSpan.onblur = (e) => { 
+                    if(e.target.textContent !== cleanText && e.target.textContent.trim()) { 
+                        todo.text = e.target.textContent.trim() + (tags.length ? ' ' + tags.join(' ') : ''); 
+                        saveTodos(); renderList(); 
+                    } else { e.target.innerHTML = linkify(cleanText); }
+                };
+                txtSpan.onkeydown = (e) => { if(e.key === 'Enter') { e.preventDefault(); e.target.blur(); } };
+                txtCont.appendChild(txtSpan);
+
+                tags.forEach(tag => {
+                    const tagEl = document.createElement('span');
+                    tagEl.className = `text-[10px] px-1.5 py-0.5 rounded-md font-semibold shrink-0 ${todo.completed ? 'bg-slate-100 text-slate-400' : 'bg-primary-50 text-primary-600 border border-primary-100'}`;
+                    tagEl.textContent = tag; txtCont.appendChild(tagEl);
+                });
+
+                const metaRow = document.createElement('div'); metaRow.className = 'flex flex-wrap gap-1 mt-1';
+                
+                if (todo.category !== 'none') {
+                    const catPill = document.createElement('span'); 
+                    catPill.className = `text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1 shrink-0 ${todo.category === 'work' ? 'bg-amber-100 text-amber-700' : 'bg-teal-100 text-teal-700'}`;
+                    catPill.innerHTML = todo.category === 'work' ? `<i class="ph-fill ph-briefcase"></i> Work` : `<i class="ph-fill ph-house"></i> Personal`;
+                    metaRow.appendChild(catPill);
+                }
+
+                if(todo.type === 'event') {
+                    const evtPill = document.createElement('span'); evtPill.className = 'text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1 bg-purple-100 text-purple-700 shrink-0';
+                    evtPill.innerHTML = `<i class="ph-fill ph-video-camera"></i> Meeting`; metaRow.appendChild(evtPill);
+                }
+                if (todo.dueDate) {
+                    const isPast = parseDateLocal(todo.dueDate) < new Date(new Date().setHours(0,0,0,0)) && !todo.completed;
+                    const datePill = document.createElement('span');
+                    datePill.className = `text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1 shrink-0 ${todo.completed ? 'bg-slate-100 text-slate-400' : (isPast ? 'bg-rose-100 text-rose-600 font-bold' : 'bg-slate-100 text-slate-500')}`;
+                    datePill.innerHTML = `<i class="ph ph-calendar"></i> ${parseDateLocal(todo.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}${todo.dueTime ? ` @ ${todo.dueTime}` : ''}`;
+                    metaRow.appendChild(datePill);
+                }
+                if (subTot > 0 || hasNotes || attCount > 0) {
+                    const progPill = document.createElement('span'); progPill.className = `text-[10px] px-1.5 py-0.5 rounded font-medium flex items-center gap-1 shrink-0 ${subTot>0 && subTot===subDone ? 'text-emerald-600 bg-emerald-50' : 'text-slate-500 bg-slate-100'}`;
+                    let inner = '';
+                    if(subTot > 0) inner += `<i class="ph-bold ph-git-merge"></i> ${subDone}/${subTot} `;
+                    if(hasNotes) inner += `<i class="ph-bold ph-text-align-left ml-1"></i> `;
+                    if(attCount > 0) inner += `<i class="ph-bold ph-paperclip ml-1"></i> ${attCount}`;
+                    progPill.innerHTML = inner.trim(); metaRow.appendChild(progPill);
+                }
+                
+                content.append(txtCont, metaRow); leftSide.appendChild(content);
+
+                const actDiv = document.createElement('div'); actDiv.className = 'opacity-100 sm:opacity-0 sm:group-hover:opacity-100 shrink-0 z-10';
+                const delBtn = document.createElement('button'); delBtn.className = 'p-1.5 text-slate-400 hover:text-rose-600 rounded'; delBtn.innerHTML = `<i class="ph ph-trash text-lg"></i>`;
+                delBtn.onclick = (e) => { e.stopPropagation(); deleteTodo(todo.id); };
+                actDiv.appendChild(delBtn);
+
+                mainRow.append(leftSide, actDiv); li.appendChild(mainRow);
+
+                if(isExp) {
+                    const subWrap = document.createElement('div'); 
+                    subWrap.className = 'pl-[3.25rem] pr-3 pb-4 flex flex-col gap-3 bg-slate-50/50 border-t border-slate-100 pt-3 cursor-default';
+                    subWrap.onmousedown = (e) => e.stopPropagation(); 
+
+                    const sublistDiv = document.createElement('div');
+                    sublistDiv.className = 'flex flex-col gap-1';
+                    todo.subtasks.forEach(sub => {
+                        const sRow = document.createElement('div'); sRow.className = 'flex items-center justify-between group/sub py-0.5';
+                        const sLeft = document.createElement('label'); sLeft.className = 'flex items-center gap-2 cursor-pointer flex-1 min-w-0';
+                        const sChkWrap = document.createElement('div'); sChkWrap.className = 'relative flex items-center shrink-0';
+                        const sChk = document.createElement('input'); sChk.type = 'checkbox'; sChk.className = 'subtask-checkbox peer sr-only'; sChk.checked = sub.completed;
+                        sChk.onchange = () => toggleSubtask(todo.id, sub.id);
+                        const sCustChk = document.createElement('div'); sCustChk.className = 'w-4 h-4 rounded border border-slate-300 flex items-center justify-center bg-white';
+                        sCustChk.innerHTML = `<i class="ph-bold ph-check text-white text-[10px] opacity-0 transition-opacity"></i>`;
+                        sChkWrap.append(sChk, sCustChk);
+
+                        const sTxt = document.createElement('span'); sTxt.className = `text-sm truncate ${sub.completed ? 'text-slate-400 line-through' : 'text-slate-600'}`;
+                        sTxt.innerHTML = linkify(sub.text); sTxt.contentEditable = !sub.completed; sTxt.spellcheck = false;
+                        sTxt.onblur = (e) => { if(e.target.textContent !== sub.text && e.target.textContent.trim()) { sub.text = e.target.textContent.trim(); saveTodos(); } e.target.innerHTML = linkify(sub.text); };
+                        sTxt.onkeydown = (e) => { if(e.key === 'Enter') { e.preventDefault(); e.target.blur(); }};
+                        
+                        sLeft.append(sChkWrap, sTxt);
+
+                        const sDelBtn = document.createElement('button'); sDelBtn.className = 'text-slate-300 hover:text-rose-500 opacity-0 group-hover/sub:opacity-100 p-0.5 rounded';
+                        sDelBtn.innerHTML = `<i class="ph ph-x text-sm"></i>`; sDelBtn.onclick = () => deleteSubtask(todo.id, sub.id);
+                        
+                        sRow.append(sLeft, sDelBtn); sublistDiv.appendChild(sRow);
+                    });
+
+                    const addSubForm = document.createElement('form'); addSubForm.className = 'flex items-center gap-2 mt-1';
+                    addSubForm.innerHTML = `<div class="w-4 h-4 flex items-center justify-center text-slate-300 shrink-0"><i class="ph-bold ph-plus text-xs"></i></div><input type="text" placeholder="Add subtask..." class="flex-1 bg-transparent border-none text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-0 py-1">`;
+                    addSubForm.onsubmit = (e) => { e.preventDefault(); addSubtask(todo.id, addSubForm.querySelector('input').value); };
+                    sublistDiv.appendChild(addSubForm); 
+                    subWrap.appendChild(sublistDiv);
+
+                    const notesWrap = document.createElement('div');
+                    notesWrap.innerHTML = `<label class="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1 block">Description / Notes</label>`;
+                    const notesArea = document.createElement('textarea');
+                    notesArea.className = 'w-full bg-white border border-slate-200 rounded-lg p-2 text-sm text-slate-700 focus:ring-2 focus:ring-primary-500 focus:outline-none resize-none min-h-[60px] shadow-sm';
+                    notesArea.placeholder = 'Add details...';
+                    notesArea.value = todo.notes || '';
+                    notesArea.onblur = (e) => updateNotes(todo.id, e.target.value);
+                    notesWrap.appendChild(notesArea);
+                    subWrap.appendChild(notesWrap);
+
+                    const attWrap = document.createElement('div');
+                    attWrap.innerHTML = `<label class="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1 block">Attachments</label>`;
+                    const attList = document.createElement('div'); attList.className = 'flex flex-wrap gap-2 mb-2';
+                    
+                    if(todo.attachments) {
+                        todo.attachments.forEach((att, idx) => {
+                            const attItem = document.createElement('div');
+                            attItem.className = 'relative group/att border border-slate-200 rounded overflow-hidden w-16 h-16 bg-slate-100 flex items-center justify-center shrink-0';
+                            
+                            if(att.type.startsWith('image/')) {
+                                attItem.innerHTML = `<img src="${att.data}" class="w-full h-full object-cover">`;
+                            } else {
+                                attItem.innerHTML = `<i class="ph-fill ph-file-text text-2xl text-slate-400"></i><span class="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[8px] truncate px-1 py-0.5">${att.name}</span>`;
+                            }
+                            
+                            const attDel = document.createElement('button');
+                            attDel.className = 'absolute top-0 right-0 p-1 bg-red-500 text-white opacity-0 group-hover/att:opacity-100 transition-opacity';
+                            attDel.innerHTML = `<i class="ph ph-x text-xs"></i>`;
+                            attDel.onclick = () => deleteAttachment(todo.id, idx);
+                            
+                            attItem.appendChild(attDel); attList.appendChild(attItem);
+                        });
+                    }
+
+                    const attInputLabel = document.createElement('label');
+                    attInputLabel.className = 'inline-flex items-center gap-1 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg text-xs font-medium text-slate-600 cursor-pointer transition-colors shadow-sm';
+                    attInputLabel.innerHTML = `<i class="ph ph-paperclip text-sm"></i> Add File <input type="file" class="hidden">`;
+                    attInputLabel.querySelector('input').onchange = (e) => { if(e.target.files[0]) addAttachment(todo.id, e.target.files[0]); };
+
+                    attWrap.append(attList, attInputLabel);
+                    subWrap.appendChild(attWrap);
+
+                    li.appendChild(subWrap);
+                }
+
+                DOM.list.appendChild(li);
+            });
+            updateStats();
+        }
+
+        function renderCalendar() {
+            DOM.calendarGrid.innerHTML = '';
+            const mNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+            DOM.calendarMonthYear.textContent = `${mNames[displayMonth]} ${displayYear}`;
+
+            const firstDay = new Date(displayYear, displayMonth, 1).getDay();
+            const lastDay = new Date(displayYear, displayMonth + 1, 0).getDate();
+            const totalCells = Math.ceil((firstDay + lastDay) / 7) * 7;
+
+            for (let i = 0; i < totalCells; i++) {
+                const cDate = new Date(displayYear, displayMonth, i - firstDay + 1);
+                const isCur = cDate.getMonth() === displayMonth;
+                const dStr = formatDateLocal(cDate);
+                
+                const cell = document.createElement('div');
+                cell.className = `min-h-[80px] sm:min-h-[100px] p-1 sm:p-2 bg-white flex flex-col transition-colors cursor-pointer hover:bg-slate-50 ${!isCur ? 'bg-slate-50 text-slate-400' : 'text-slate-700'}`;
+                
+                const dHead = document.createElement('div'); dHead.className = 'flex justify-between items-center mb-1';
+                const dNum = document.createElement('span'); dNum.className = `text-sm font-medium w-6 h-6 flex items-center justify-center rounded-full ${isToday(cDate) ? 'bg-primary-600 text-white' : ''}`;
+                dNum.textContent = cDate.getDate(); dHead.appendChild(dNum); cell.appendChild(dHead);
+
+                const tForDay = todos.filter(t => t.dueDate === dStr).sort((a,b) => (a.dueTime||'24:00').localeCompare(b.dueTime||'24:00'));
+                const tCont = document.createElement('div'); tCont.className = 'flex flex-col gap-1 overflow-y-auto no-scrollbar flex-1';
+
+                tForDay.forEach(task => {
+                    const el = document.createElement('div');
+                    const isMtg = task.type === 'event';
+                    const baseCol = isMtg ? 'bg-purple-50 border-purple-500 text-purple-700' : 'bg-primary-50 border-primary-500 text-primary-700';
+                    el.className = `text-[9px] sm:text-[10px] px-1 py-0.5 sm:px-1.5 sm:py-1 rounded truncate border-l-2 ${task.completed ? 'bg-slate-100 border-slate-300 text-slate-500 line-through opacity-60' : baseCol}`;
+                    el.textContent = (task.dueTime ? `${task.dueTime} ` : '') + task.text;
+                    el.onclick = (e) => { e.stopPropagation(); toggleTodo(task.id); };
+                    tCont.appendChild(el);
+                });
+
+                cell.appendChild(tCont);
+                cell.onclick = () => { DOM.dateInput.value = dStr; selectedDateFilter = dStr; switchView('list'); };
+                DOM.calendarGrid.appendChild(cell);
+            }
+        }
+        
+        function render() {
+            if(currentView === 'list') renderList();
+            else if(currentView === 'calendar') renderCalendar();
+        }
+
+        // --- Command Palette Logic ---
+        function toggleCommandPalette() {
+            const isHidden = DOM.cmdPalette.classList.contains('hidden');
+            if(isHidden) {
+                DOM.cmdPalette.classList.remove('hidden');
+                void DOM.cmdPalette.offsetWidth;
+                DOM.cmdPalette.classList.remove('opacity-0');
+                DOM.cmdBox.classList.remove('scale-95');
+                DOM.cmdInput.value = '';
+                renderCommandResults('');
+                DOM.cmdInput.focus();
+            } else {
+                DOM.cmdPalette.classList.add('opacity-0');
+                DOM.cmdBox.classList.add('scale-95');
+                setTimeout(() => DOM.cmdPalette.classList.add('hidden'), 200);
+            }
+        }
+
+        function renderCommandResults(query) {
+            DOM.cmdResults.innerHTML = '';
+            const lowerQ = query.toLowerCase();
+            
+            const matches = todos.filter(t => t.text.toLowerCase().includes(lowerQ) || (t.notes && t.notes.toLowerCase().includes(lowerQ)));
+            
+            if(matches.length > 0 && query.trim() !== "") {
+                const head = document.createElement('li');
+                head.className = 'px-4 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider';
+                head.textContent = 'Found Tasks'; DOM.cmdResults.appendChild(head);
+
+                matches.slice(0, 8).forEach(t => {
+                    const li = document.createElement('li');
+                    li.className = 'px-4 py-3 hover:bg-slate-50 cursor-pointer flex items-center justify-between group/cmd';
+                    li.innerHTML = `
+                        <div class="flex items-center gap-3 truncate">
+                            <i class="ph-bold ${t.completed ? 'ph-check-circle text-emerald-500' : 'ph-circle text-slate-300'}"></i>
+                            <span class="text-slate-700 truncate">${t.text}</span>
+                        </div>
+                        <span class="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded opacity-0 group-hover/cmd:opacity-100">Toggle</span>
+                    `;
+                    li.onclick = () => { toggleTodo(t.id); toggleCommandPalette(); };
+                    DOM.cmdResults.appendChild(li);
+                });
+            }
+
+            if(query.trim() !== "") {
+                const addLi = document.createElement('li');
+                addLi.className = 'px-4 py-3 hover:bg-primary-50 cursor-pointer flex items-center gap-3 text-primary-600 font-medium border-t border-slate-100';
+                addLi.innerHTML = `<i class="ph-bold ph-plus-circle"></i> Create new task: "${query}"`;
+                addLi.onclick = () => { addTodo(query, null, null); toggleCommandPalette(); };
+                DOM.cmdResults.appendChild(addLi);
+            }
+        }
+
+        DOM.cmdInput.addEventListener('input', (e) => renderCommandResults(e.target.value));
+        DOM.cmdInput.addEventListener('keydown', (e) => {
+            if(e.key === 'Enter' && DOM.cmdInput.value.trim() !== '') {
+                const val = DOM.cmdInput.value.trim();
+                const matches = todos.filter(t => t.text.toLowerCase().includes(val.toLowerCase()));
+                if(matches.length === 0) { addTodo(val, null, null); toggleCommandPalette(); }
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+                e.preventDefault(); toggleCommandPalette();
+            }
+            if (e.key === 'Escape' && !DOM.cmdPalette.classList.contains('hidden')) {
+                toggleCommandPalette();
+            }
+        });
+        
+        DOM.cmdClose.onclick = toggleCommandPalette;
+        DOM.cmdPalette.onclick = (e) => { if(e.target === DOM.cmdPalette) toggleCommandPalette(); }
+
+        // --- App Setup & View Switching ---
+        function switchView(view) {
+            currentView = view;
+            const views = { 'list': DOM.listView, 'calendar': DOM.calendarView, 'settings': DOM.settingsView };
+            const btns = { 'list': DOM.btnList, 'calendar': DOM.btnCalendar, 'settings': DOM.btnSettings };
+
+            Object.values(btns).forEach(b => b.classList.remove('active'));
+            btns[view].classList.add('active');
+
+            if(view === 'list') DOM.inputContainer.classList.remove('hidden');
+            else DOM.inputContainer.classList.add('hidden');
+
+            Object.entries(views).forEach(([k, el]) => {
+                if (k === view) {
+                    el.classList.remove('hidden'); void el.offsetWidth;
+                    el.classList.remove('opacity-0', 'pointer-events-none');
+                } else {
+                    el.classList.add('opacity-0', 'pointer-events-none');
+                    setTimeout(() => el.classList.add('hidden'), 300);
+                }
+            });
+            render();
+        }
+
+        // --- ICS Parsing Logic (Robust for Google Calendar) ---
+        function processICSData(icsData) {
+            // Unfold lines standard in iCal (CRLF followed by Space or Tab)
+            const unfolded = icsData.replace(/\r?\n[ \t]/g, '');
+            const lines = unfolded.split(/\r?\n/);
+            
+            let inEvent = false;
+            let currentEvent = {};
+            let importedCount = 0;
+
+            lines.forEach(line => {
+                if(line.startsWith('BEGIN:VEVENT')) {
+                    inEvent = true; currentEvent = {};
+                } else if (line.startsWith('END:VEVENT')) {
+                    inEvent = false;
+                    if(currentEvent.summary && currentEvent.dtstart) {
+                        const exists = todos.find(t => t.text === currentEvent.summary && t.dueDate === currentEvent.dtstart);
+                        if(!exists) {
+                            const maxOrder = todos.length > 0 ? Math.max(...todos.map(t => t.order || 0)) : 0;
+                            todos.push({
+                                id: generateId(), text: currentEvent.summary, completed: false, createdAt: Date.now(),
+                                dueDate: currentEvent.dtstart, dueTime: currentEvent.dtTime || null, 
+                                subtasks: [], category: 'none', notes: currentEvent.description || '', attachments: [], type: 'event', order: maxOrder + 1
+                            });
+                            importedCount++;
+                        }
+                    }
+                } else if (inEvent) {
+                    // Match Key, Params (optional), and Value
+                    const match = line.match(/^([^;:]+)(?:;([^:]*))?:(.*)$/);
+                    if (!match) return;
+                    const [_, key, params, value] = match;
+
+                    if (key === 'SUMMARY') {
+                        currentEvent.summary = value.replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\\\/g, '\\');
+                    } else if (key === 'DESCRIPTION') {
+                        currentEvent.description = value.replace(/\\n/g, '\n').replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\\\/g, '\\');
+                    } else if (key === 'DTSTART') {
+                        // Regex matches YYYYMMDD and optionally THHMMSS
+                        const dateMatch = value.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2}))?/);
+                        if(dateMatch) {
+                            currentEvent.dtstart = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
+                            // If time exists
+                            if(dateMatch[4] && dateMatch[5]) {
+                                currentEvent.dtTime = `${dateMatch[4]}:${dateMatch[5]}`;
+                            }
+                        }
+                    }
+                }
+            });
+            
+            if (importedCount > 0) { 
+                saveTodos(); render(); 
+                showToast('Calendar Synced', `Successfully imported ${importedCount} new events.`); 
+            } else { 
+                showToast('Calendar Synced', `No new events found to import.`, 'info'); 
+            }
+        }
+
+        // --- Proxy Sync Logic ---
+        async function syncCalendar() {
+            const urlInput = document.getElementById('setting-ics-url').value.trim();
+            if(!urlInput) { showToast('Error', 'Please enter a valid iCal URL', 'error'); return; }
+
+            const btn = document.getElementById('btn-sync-now');
+            const ogText = btn.textContent;
+            btn.innerHTML = `<i class="ph ph-spinner animate-spin"></i> Syncing...`;
+            btn.disabled = true;
+
+            try {
+                // Ensure we don't double encode if the user copied a pre-encoded URL (like %40 for @)
+                const normalizedUrl = decodeURIComponent(urlInput); 
+                const encodedUrl = encodeURIComponent(normalizedUrl);
+
+                // Use robust proxies. corsproxy.io tends to drop fewer headers.
+                const proxies = [
+                    `https://corsproxy.io/?${encodedUrl}`,
+                    `https://api.allorigins.win/raw?url=${encodedUrl}`
+                ];
+
+                let icsData = null;
+                let fetchError = '';
+
+                for (const proxy of proxies) {
+                    try {
+                        const response = await fetch(proxy);
+                        if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+                        
+                        const text = await response.text();
+                        
+                        // Validate ICS payload
+                        if (text.includes('BEGIN:VCALENDAR')) {
+                            icsData = text;
+                            break; 
+                        } else {
+                            throw new Error('Proxy returned invalid data (likely a 520 HTML error page).');
+                        }
+                    } catch (err) {
+                        fetchError = err.message;
+                        console.warn(`Proxy failed: ${proxy}`, err);
+                    }
+                }
+
+                if (!icsData) {
+                    throw new Error(`Fetch failed via proxies. Reason: ${fetchError}. Try Manual Upload instead.`);
+                }
+
+                processICSData(icsData);
+
+            } catch(error) {
+                console.error(error);
+                showToast('Sync Failed', error.message, 'error');
+            } finally {
+                btn.textContent = ogText;
+                btn.disabled = false;
+            }
+        }
+
+        function init() {
+            handleRollover(); 
+
+            DOM.dateDisplay.textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+            DOM.dateInput.value = formatDateLocal(new Date());
+            
+            document.getElementById('setting-reminder').value = settings.reminderOffset;
+            document.getElementById('setting-ics-url').value = settings.icsUrl;
+            
+            if (Notification.permission !== 'denied' && Notification.permission !== 'granted') {
+                document.getElementById('btn-request-notify').classList.remove('hidden');
+            } else if (Notification.permission === 'granted') {
+                document.getElementById('btn-request-notify').textContent = 'Enabled';
+                document.getElementById('btn-request-notify').disabled = true;
+            }
+
+            notificationInterval = setInterval(() => {
+                if(settings.reminderOffset === -1) return;
+                const now = new Date();
+                todos.forEach(t => {
+                    if(t.completed || t.notified || !t.dueDate || !t.dueTime) return;
+                    const taskDate = new Date(`${t.dueDate}T${t.dueTime}`);
+                    const diffMins = (taskDate.getTime() - now.getTime()) / 60000;
+                    
+                    if(diffMins <= settings.reminderOffset && diffMins > -1) {
+                        showToast('Reminder', `${t.text} is due at ${t.dueTime}`);
+                        if(Notification.permission === 'granted') new Notification('Taskify Reminder', { body: `${t.text} is due at ${t.dueTime}` });
+                        t.notified = true; saveTodos();
+                    }
+                });
+            }, 60000); 
+
+            render();
+            
+            // Listeners
+            DOM.form.onsubmit = (e) => {
+                e.preventDefault();
+                if (DOM.input.value.trim()) { addTodo(DOM.input.value.trim(), DOM.dateInput.value, DOM.timeInput.value, DOM.categoryInput.value); DOM.input.value = ''; }
+            };
+
+            DOM.btnList.onclick = () => switchView('list');
+            DOM.btnCalendar.onclick = () => switchView('calendar');
+            DOM.btnSettings.onclick = () => switchView('settings');
+
+            DOM.filterBtns.forEach(btn => btn.onclick = (e) => {
+                DOM.filterBtns.forEach(b => { b.classList.remove('bg-white','text-slate-800','shadow-sm','active-filter'); b.classList.add('text-slate-500'); });
+                e.target.classList.remove('text-slate-500'); e.target.classList.add('bg-white','text-slate-800','shadow-sm','active-filter');
+                currentFilter = e.target.dataset.filter; renderList();
+            });
+
+            DOM.clearCompletedBtn.onclick = () => { todos = todos.filter(t => !t.completed); saveTodos(); renderList(); };
+            DOM.clearDateFilterBtn.onclick = () => { selectedDateFilter = null; renderList(); };
+
+            document.getElementById('btn-prev-month').onclick = () => { displayMonth--; if(displayMonth<0){displayMonth=11;displayYear--;} renderCalendar(); };
+            document.getElementById('btn-next-month').onclick = () => { displayMonth++; if(displayMonth>11){displayMonth=0;displayYear++;} renderCalendar(); };
+            document.getElementById('btn-today-month').onclick = () => { displayMonth=new Date().getMonth(); displayYear=new Date().getFullYear(); renderCalendar(); };
+            
+            // Settings Listeners
+            document.getElementById('btn-request-notify').onclick = () => {
+                Notification.requestPermission().then(p => {
+                    if(p === 'granted') { document.getElementById('btn-request-notify').textContent = 'Enabled'; document.getElementById('btn-request-notify').disabled = true; showToast('Success', 'Notifications enabled!'); }
+                });
+            };
+            document.getElementById('setting-reminder').onchange = (e) => { settings.reminderOffset = parseInt(e.target.value); saveSettings(); };
+            document.getElementById('setting-ics-url').onchange = (e) => { settings.icsUrl = e.target.value; saveSettings(); };
+            document.getElementById('btn-sync-now').onclick = syncCalendar;
+            
+            // File Uploads
+            document.getElementById('btn-export-json').onclick = () => {
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(todos));
+                const dlAnchorElem = document.createElement('a'); dlAnchorElem.setAttribute("href", dataStr); dlAnchorElem.setAttribute("download", `taskify_backup_${formatDateLocal(new Date())}.json`); dlAnchorElem.click();
+            };
+            document.getElementById('input-import-json').onchange = (e) => {
+                const file = e.target.files[0];
+                if(file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => { try { const parsed = JSON.parse(e.target.result); if(Array.isArray(parsed)) { todos = parsed; saveTodos(); render(); showToast('Success', 'Backup restored!'); } } catch(err) { showToast('Error', 'Invalid JSON file.', 'error'); } };
+                    reader.readAsText(file);
+                }
+            };
+            
+            // Secure Local ICS File parsing
+            document.getElementById('input-import-ics-file').onchange = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (evt) => {
+                        try {
+                            const text = evt.target.result;
+                            if (!text.includes('BEGIN:VCALENDAR')) throw new Error("Invalid ICS file structure.");
+                            processICSData(text);
+                            // Reset input so the same file can be uploaded again if needed
+                            e.target.value = '';
+                        } catch (err) {
+                            showToast('Import Error', 'Could not parse the ICS file.', 'error');
+                        }
+                    };
+                    reader.readAsText(file);
+                }
+            };
+        }
+        
+        const style = document.createElement('style'); style.textContent = `.no-scrollbar::-webkit-scrollbar { display: none; } .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }`; document.head.appendChild(style);
+        init();
+    </script>
+</body>
+</html>
