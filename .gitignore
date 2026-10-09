@@ -141,6 +141,12 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+dist-ssr
+
+# Wrangler / Clerk local secrets
+.dev.vars
+.wrangler
+*.local
 
 # Astro generated types
 .astro/

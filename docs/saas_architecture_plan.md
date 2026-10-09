@@ -1,6 +1,6 @@
 # Taskify SaaS: Build Plan (MVP)
 
-Greenfield. Clerk is already working in `my-clerk-react-app/`. No localStorage import. `tenant_id` = Clerk `sub` on every task and event. Scale/queues/R2/push/attachments are out of scope.
+Greenfield. Clerk auth is wired at the repo root. No localStorage import. `tenant_id` = Clerk `sub` on every task and event. Scale/queues/R2/push/attachments are out of scope.
 
 ---
 
@@ -11,14 +11,14 @@ Greenfield. Clerk is already working in `my-clerk-react-app/`. No localStorage i
 | Auth | Clerk (`@clerk/react`), JWT to the Worker |
 | UI | Vite React + Tailwind + shadcn/ui |
 | Data | Cloudflare D1, `tenant_id` on `tasks` and `events` |
-| Frontend host | Cloudflare Pages (`npm run build` → `dist`) |
-| API + cron | Separate Cloudflare Worker (Hono + D1 + scheduled) |
+| Frontend host | Same Cloudflare Worker (`npm run build` → `dist` static assets) |
+| API + cron | Same Worker (Hono + D1). Cron is later |
 | Calendar | Secret iCal URL stored on `users`; **manual Sync now** (Worker fetch). 15-min cron is later |
 | Deferred | Attachments, Web Push, manual `.ics` upload |
 
 ---
 
-## 1. Features to port from `index.html`
+## 1. Features to port from `legacy/index.html`
 
 **In MVP**
 
@@ -40,22 +40,22 @@ Greenfield. Clerk is already working in `my-clerk-react-app/`. No localStorage i
 
 ## 2. Frontend (React + Tailwind + shadcn)
 
-Work **inside** `my-clerk-react-app/` (Clerk already lives there). Keep root `index.html` as the old demo until Pages is live.
+App lives at the **repo root**. The original HTML prototype is in `legacy/`.
 
 ```text
-my-clerk-react-app/
-├── src/
-│   ├── main.tsx              ClerkProvider
-│   ├── App.tsx               Signed-in shell, views
-│   ├── lib/api.ts            fetch + Clerk getToken()
-│   ├── components/ui/        shadcn
-│   └── features/
-│       ├── tasks/            list, item, form
-│       ├── calendar/
-│       └── settings/
-├── worker/index.ts           Hono API + cron
-├── schema.sql
-└── wrangler.jsonc
+src/
+├── main.tsx              ClerkProvider
+├── App.tsx               Signed-in shell, views
+├── lib/api.ts            fetch + Clerk getToken()
+├── components/ui/        shadcn
+└── features/
+    ├── tasks/            list, item, form
+    ├── calendar/
+    └── settings/
+worker/index.ts           Hono API
+schema.sql
+wrangler.jsonc            Worker + dist assets + D1
+legacy/                   original single-file app
 ```
 
 **UX stack**
@@ -126,45 +126,42 @@ CREATE INDEX idx_events_tenant_start ON events(tenant_id, start_at);
 
 ## 4. Cloudflare deployment
 
-Two deploys, one repo:
+One deploy, one repo:
 
 | Piece | Where | How |
 |---|---|---|
-| UI | Cloudflare Pages | Build: `cd my-clerk-react-app && npm run build`. Output: `dist`. SPA fallback: `index.html` |
-| API + cron | Cloudflare Worker | `wrangler deploy`. Bind D1. Cron `*/15 * * * *` |
+| UI + API | Cloudflare Worker | `npm run deploy` (`vite build` → `dist`, then `wrangler deploy`) |
+| DB | D1 `taskify` | Bound as `DB`. Schema: `npm run db:remote` |
 
-**Wrangler (Worker)** — `wrangler.jsonc`
+**Wrangler** — `wrangler.jsonc`
 
-* `d1_databases`: DB name `taskify`, binding `DB`
-* `triggers.crons`: `*/15 * * * *`
-* Secret: `CLERK_SECRET_KEY` (`wrangler secret put`)
-* Var: Clerk `authorizedParties` / frontend origin
+* `assets.directory`: `./dist`, SPA fallback, `run_worker_first`: `/api/*`
+* `d1_databases`: name `taskify`, binding `DB`
+* `vars.FRONTEND_ORIGIN`: production Worker URL
+* JWT verify uses bundled public JWKS (`worker/jwks.json`)
 
-**Pages env**
+**Build env**
 
-* `VITE_CLERK_PUBLISHABLE_KEY`
-* `VITE_API_URL` = Worker URL (e.g. `https://taskify-api.<account>.workers.dev`)
+* `VITE_CLERK_PUBLISHABLE_KEY` in `.env.local` (baked into the client bundle)
 
 **Clerk Dashboard**
 
-* Add Pages URL (`https://<project>.pages.dev` and custom domain) to allowed origins / redirect URLs.
+* Add the Worker URL (`https://taskify-api.<account>.workers.dev`) to allowed origins / redirect URLs.
 
 **Local**
 
-* `wrangler d1 execute taskify --local --file=schema.sql`
-* `wrangler dev` for the Worker + Vite on `:5173` with `VITE_API_URL=http://127.0.0.1:8787`
-
-CORS: Worker allows the Pages origin and `localhost:5173`.
+* `npm run db:local`
+* `npm run dev:api` (`:8787`) + `npm run dev` (Vite, proxies `/api`)
 
 ---
 
 ## 5. Build order (next sessions)
 
-1. **Design system** — Tailwind + shadcn in `my-clerk-react-app`; app shell (header, List/Calendar/Settings, Clerk).
+1. **Design system** — Tailwind + shadcn; app shell (header, List/Calendar/Settings, Clerk).
 2. **Schema + local D1** — `schema.sql`, create DB, apply migrations.
 3. **Worker** — Hono, Clerk JWT → `tenant_id`, task CRUD + `/me` + `/events`.
 4. **Wire UI** — replace Vite starter with Taskify list talking to the API.
 5. **Calendar + ICS** — month view; save ICS URL; sync now + cron.
-6. **Deploy** — Worker + D1 remote, then Pages; point Clerk at the Pages URL.
+6. **Deploy** — `npm run deploy`; point Clerk at the Worker URL.
 
 Start with step 1 (shadcn shell) in parallel with step 2 (schema) — neither depends on the other.
